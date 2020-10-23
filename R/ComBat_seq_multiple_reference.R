@@ -49,7 +49,7 @@ ComBat_seq_multiple_reference <- function(counts, batch, group=NULL, covar_mod=N
 if (isFalse(all(reference_set%in%batch))) {
 stop('There are batch in reference set that are not in the overall batch information.')
 }
-#### Subset out the referencebatch
+#### Subset out the referencebatch. ####
 referencebatch_batch=batch[which(batch%in%reference_set)]
 referencebatch_count=counts[,which(batch%in%reference_set)]
 if (is.null(group)) {referencebatch_group=NULL}
@@ -60,6 +60,33 @@ else{referencebatch_covar_mod=covar_mod[which(batch%in%reference_set),]}
 
 corrected_reference_batch=ComBat_seq(referencebatch_count,referencebatch_batch,referencebatch_group,referencebatch_covar_mod,full_mod=full_mod,
 shrink=shrink,shrink.disp=shrink.disp,gene.subset.n=gene.subset.n)
+
+#### Next step is to batch correct all other dataset individually against this one reference batch. ####
+results=corrected_reference_batch
+for (i in unique(batch[batch%in%reference_set])) {
+query_batch=batch[which(batch%in%i)]
+query_count=counts[,which(batch%in%i)]
+if (is.null(group)) {query_group=NULL}
+else{query_group=group[which(batch%in%i)]
+query_group=c(referencebatch_group,query_group)
+}
+if (is.null(covar_mod)) {query_covar_mod=NULL}
+else{query_covar_mod=covar_mod[which(batch%in%i),]
+query_covar_mod=rbind(referencebatch_covar_mod,query_covar_mod)
+}
+query_batch=c(referencebatch_batch,query_batch)
+query_count=cbind(corrected_reference_batch,query_count)
+
+query=ComBat_seq(query_count,query_batch,query_group,query_covar_mod,full_mod=full_mod,
+shrink=shrink,shrink.disp=shrink.disp,gene.subset.n=gene.subset.n)
+query=query[,!colnames(query)%in%]
+
+}
+
+
+
+
+
 
 
 }
