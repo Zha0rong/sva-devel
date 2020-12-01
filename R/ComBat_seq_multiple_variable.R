@@ -40,8 +40,7 @@ ComBat_seq <- function(counts, batch, group=NULL, covar_mod=NULL, full_mod=TRUE,
   #if(any(table(batch)<=1)){
   #  stop("ComBat-seq doesn't support 1 sample per batch yet")
   #}
-
-  print(n_batch)
+  ####Find the genes that works for multiple batches####
   consensus_gene_vector=c()
   for (i in 1:ncol(batch)) {
     individual_batch_name=colnames(batch)[i]
@@ -54,6 +53,7 @@ ComBat_seq <- function(counts, batch, group=NULL, covar_mod=NULL, full_mod=TRUE,
   }
   counts <- counts[consensus_gene_vector, ]
   cat(paste('Retain ',length(consensus_gene_vector),' genes in the later analysis.\n'))
+  ####Calculate Phi star and mu star for each batch variable####
   multiple_batch_list=list()
   for (i in 1:ncol(batch)) {
     individual_batch_name=colnames(batch)[i]
