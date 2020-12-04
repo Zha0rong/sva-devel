@@ -32,6 +32,7 @@
 #' 
 #' @export
 #' 
+
 ComBat_seq <- function(counts, batch, group=NULL, covar_mod=NULL, full_mod=TRUE, 
                        shrink=FALSE, shrink.disp=FALSE, gene.subset.n=NULL){  
   ########  Preparation  ########  
@@ -40,20 +41,20 @@ ComBat_seq <- function(counts, batch, group=NULL, covar_mod=NULL, full_mod=TRUE,
   #if(any(table(batch)<=1)){
   #  stop("ComBat-seq doesn't support 1 sample per batch yet")
   #}
-  ####Find the genes that works for multiple batches####
-  consensus_gene_vector=c()
+  
+  consensus_gene_vector=list()
   for (i in 1:ncol(batch)) {
     individual_batch_name=colnames(batch)[i]
     individual_batch <- as.factor(batch[,i])
     individual_keep_lst <- lapply(c(levels(individual_batch)), function(b){
       which(apply(counts[, individual_batch==b], 1, function(x){!all(x==0)}))
     })
-    individual_keep <- Reduce(intersect, individual_keep_lst)
-    consensus_gene_vector=c(consensus_gene_vector,individual_keep)
+    individual_keep_lst=Reduce(intersect,individual_keep_lst)
+    consensus_gene_vector[[individual_batch_name]]=individual_keep_lst
   }
+  consensus_gene_vector=Reduce(intersect,consensus_gene_vector)
   counts <- counts[consensus_gene_vector, ]
-  cat(paste('Retain ',length(consensus_gene_vector),' genes in the later analysis.\n'))
-  ####Calculate Phi star and mu star for each batch variable####
+  
   multiple_batch_list=list()
   for (i in 1:ncol(batch)) {
     individual_batch_name=colnames(batch)[i]
@@ -136,7 +137,6 @@ ComBat_seq <- function(counts, batch, group=NULL, covar_mod=NULL, full_mod=TRUE,
     gamma_hat <- glm_f2$coefficients[, 1:individual_n_batch]
     mu_hat <- glm_f2$fitted.values
     phi_hat <- do.call(cbind, individual_genewise_disp_lst)
-
     if(shrink){
       cat("Apply shrinkage - computing posterior estimates for parameters\n")
       mcint_fun <- monte_carlo_int_NB
@@ -189,6 +189,11 @@ ComBat_seq <- function(counts, batch, group=NULL, covar_mod=NULL, full_mod=TRUE,
                                                       phi_star_mat=phi_star_mat,
                                                       mu_star=mu_star,
                                                       phi_star=phi_star)
+    
+    
+    
+    
+    
   }
   
   #The multiple_batch_list is a list that follows the following structures:
@@ -197,31 +202,70 @@ ComBat_seq <- function(counts, batch, group=NULL, covar_mod=NULL, full_mod=TRUE,
       ## gene dispersion matrix
       ## phi_matrix
   
+  Concatenated_batches=(apply(batch[,colnames(batch)],1,paste,collapse="-"))
+  
+  Concatenated_batches <- as.factor(Concatenated_batches)
+  
+  Concatenated_n_batch <- nlevels(Concatenated_batches)  # number of batches
+  Concatenated_batches_ind <- lapply(1:Concatenated_n_batch, function(i){which(Concatenated_batches==levels(Concatenated_batches)[i])}) # list of samples in each batch  
+
+  multiple_batch_list[['Concatenated_batches']]=Concatenated_batches
+  multiple_batch_list[['Concatenated_n_batch']]=Concatenated_n_batch
+  multiple_batch_list[['Concatenated_batches_ind']]=Concatenated_batches_ind
+  multiple_batch_list[['counts']]=counts
   
 
-  n_batch=1
-  for (i in 1:ncol(batch)) {
-    temp=nlevels(as.factor(batch[,i]))
-    n_batch = n_batch*temp
-  }
-  adjust_counts <- matrix(NA, nrow=nrow(counts), ncol=ncol(counts))
-  
   
   ########  Adjust the data  ########  
-  #cat("Adjusting the data\n")
-  #adjust_counts <- matrix(NA, nrow=nrow(counts), ncol=ncol(counts))
-  #for(kk in 1:n_batch){
-  #  counts_sub <- counts[, batches_ind[[kk]]]
-  #  old_mu <- mu_hat[, batches_ind[[kk]]]
-  #  old_phi <- phi_hat[, kk]
-  #  new_mu <- mu_star[, batches_ind[[kk]]]
-  #  new_phi <- phi_star
-  #  adjust_counts[, batches_ind[[kk]]] <- match_quantiles(counts_sub=counts_sub, 
-  #                                                        old_mu=old_mu, old_phi=old_phi, 
-  #                                                        new_mu=new_mu, new_phi=new_phi)
-  #}
+  cat("Adjusting the data\n")
+  adjust_counts <- matrix(NA, nrow=nrow(counts), ncol=ncol(counts))
+  for(i in 1:Concatenated_n_batch){
+    counts_sub <- counts[, Concatenated_batches_ind[[i]]]
+    #old_mu <- mu_hat[, batches_ind[[kk]]]
+   
+    
+    
+    
+    
+    
+    
+    
+    old_mu=multiple_batch_list[[colnames(batch)[1]]][['mu_hat']][, Concatenated_batches_ind[[i]]]
+    for ( j in 2:ncol(batch)) {
+      old_mu=old_mu+multiple_batch_list[[colnames(batch)[j]]][['mu_hat']][, Concatenated_batches_ind[[i]]]
+    }
+    
+    
+    #old_phi <- phi_hat[, kk]
+    
+    batch_components=as.character(unlist(strsplit(levels(Concatenated_batches)[i],split = '-')))
+    old_phi=rep(0,nrow(counts))
+    #multiple_batch_list[[colnames(batch)[1]]][['phi_hat']][,1]
+    for ( j in 1:ncol(batch)) {
+      old_phi=old_phi+multiple_batch_list[[colnames(batch)[j]]][['phi_hat']][, paste('batch',batch_components[j],sep = '')]
+    }
+    
+    #new_mu <- mu_star[, batches_ind[[kk]]]
+    
+    new_mu=multiple_batch_list[[colnames(batch)[1]]][['mu_star']][, Concatenated_batches_ind[[i]]]
+    for ( j in 2:ncol(batch)) {
+      new_mu=new_mu+multiple_batch_list[[colnames(batch)[j]]][['mu_star']][, Concatenated_batches_ind[[i]]]
+   }
+    
+    
+    #new_phi <- phi_star
+    
+    new_phi <- multiple_batch_list[[colnames(batch)[1]]][['phi_star']]
+   for ( j in 2:ncol(batch)) {
+      new_phi=new_phi+multiple_batch_list[[colnames(batch)[j]]][['phi_star']]
+    }
+    
+    adjust_counts[, Concatenated_batches_ind[[i]]] <- match_quantiles(counts_sub=counts_sub, 
+                                                          old_mu=old_mu, old_phi=old_phi, 
+                                                          new_mu=new_mu, new_phi=new_phi)
+  }
   
-  #dimnames(adjust_counts) <- dimnames(counts)
+  dimnames(adjust_counts) <- dimnames(counts)
   #return(adjust_counts)
   
   ## Add back genes with only 0 counts in any batch (so that dimensions won't change)
@@ -229,5 +273,29 @@ ComBat_seq <- function(counts, batch, group=NULL, covar_mod=NULL, full_mod=TRUE,
   #dimnames(adjust_counts_whole) <- dimnames(countsOri)
   #adjust_counts_whole[keep, ] <- adjust_counts
   #adjust_counts_whole[rm, ] <- countsOri[rm, ]
-  return(multiple_batch_list)
+  return(adjust_counts)
+}
+
+vec2mat <- function(vec, n_times){
+  return(matrix(rep(vec, n_times), ncol=n_times, byrow=FALSE))
+}
+
+match_quantiles <- function(counts_sub, old_mu, old_phi, new_mu, new_phi){
+  new_counts_sub <- matrix(NA, nrow=nrow(counts_sub), ncol=ncol(counts_sub))
+  for(a in 1:nrow(counts_sub)){
+    for(b in 1:ncol(counts_sub)){
+      if(counts_sub[a, b] <= 1){
+        new_counts_sub[a,b] <- counts_sub[a, b]
+      }else{
+        tmp_p <- pnbinom(counts_sub[a, b]-1, mu=old_mu[a, b], size=1/old_phi[a])
+        if(abs(tmp_p-1)<1e-4){
+          new_counts_sub[a,b] <- counts_sub[a, b]  
+          # for outlier count, if p==1, will return Inf values -> use original count instead
+        }else{
+          new_counts_sub[a,b] <- 1+qnbinom(tmp_p, mu=new_mu[a, b], size=1/new_phi[a])
+        }
+      }
+    }
+  }
+  return(new_counts_sub)
 }
